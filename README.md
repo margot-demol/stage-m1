@@ -42,6 +42,5 @@ from the conda website: https://docs.conda.io/en/latest/miniconda.html  and run:
     conda install pywavelets
     pip install git+git://github.com/psf/black
 
-
-#
-cd stage-m1-equinox; pip install -e .
+    cd stage-m1-equinox
+    pip install -e .
