@@ -212,21 +212,35 @@ class SetUp:
                                     },
                         output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
         self.out_ds=self.in_ds.xsimlab.run(model=self.model)
+        self.add_adv()
         
         
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         self.model = (self.model).update_processes(process)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
+        self.add_adv()
             
     def update_parameters(self,**parameters):#change one or several parameters 
         self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars=parameters)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
+        self.add_adv()
+        
+    def add_adv(self):
+        self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
     
-    def print_positions(self):#print positions trajectories
-        self.out_ds.position__p.isel(a=slice(0,None,10)).plot(x="otime", hue="a", figsize=(9,9))
+    def print_positions(self, slice_step=10):#print positions trajectories
+        self.out_ds.position__p.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
+        
+    def print_positions_fac(self,slice_step=10 ):#print positions trajectories
+        fg=self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="position__p", marker='.', s=10,col='otime')
+        for ax in fg.axes[0]:
+                self.out_ds.isel(otime=0).plot.scatter(x="a", y="position__p", marker='.', c='red', s=1, ax=ax)
     
-    def print_velocities(self):#print velocities for different otime
-        fg=self.out_ds.isel(otime=slice(0,None,20)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
+    def print_velocities(self, slice_step=10):#print velocities for different otime
+        self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
+    
+    def print_adv(self, slice_step=10):
+        self.out_ds.advancement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
 
     
     def analytical_comparison(self):#verify model respects the analytical solution
@@ -235,4 +249,4 @@ class SetUp:
         else:
             _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.velocity__um, self.out_ds.velocity__uw, self.out_ds.velocity__w, self.out_ds.velocity__k)
         
-        return np.all(_va==self.out_ds.velocity__v)   
+        return np.all(_va==self.out_ds.velocity__v)  
