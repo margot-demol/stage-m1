@@ -1,4 +1,4 @@
-# stage-m1
+# stage-m1-equinox
 
 Contains codes that: 
 * process temporal integration with x.array.sim_lab for drifters in waves (temporal_integration.py) 
