@@ -1,7 +1,7 @@
 # stage-m1
 
 Contains codes that: 
-* undergo temporal integration with x.array.sim_lab for drifters in waves (temporal_integration.py) 
+* process temporal integration with x.array.sim_lab for drifters in waves (temporal_integration.py) 
 ___________
 
 # Useful links
