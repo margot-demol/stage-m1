@@ -1,12 +1,12 @@
 # stage-m1
 
 Contains codes that: 
-*undergo temporal integration with x.array.sim_lab for drifters in waves (temporal_integration.py) 
+* undergo temporal integration with x.array.sim_lab for drifters in waves (temporal_integration.py) 
 ___________
 
 # Useful links
 
-[x.array.sim_lab documentation](https://xarray-simlab.readthedocs.io/en/latest/create_model.html) gives a great and detailed example for running simulation with x.array.sim_lab
+* [x.array.sim_lab documentation](https://xarray-simlab.readthedocs.io/en/latest/create_model.html) gives a great and detailed example for running simulation with x.array.sim_lab
 
 ____________
 
