@@ -212,20 +212,20 @@ class SetUp:
                                     },
                         output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
         self.out_ds=self.in_ds.xsimlab.run(model=self.model)
-        self.add_adv()
+        self.update_adv()
         
         
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         self.model = (self.model).update_processes(process)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
-        self.add_adv()
+        self.update_adv()
             
     def update_parameters(self,**parameters):#change one or several parameters 
         self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars=parameters)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
-        self.add_adv()
+        self.update_adv()
         
-    def add_adv(self):
+    def update_adv(self):
         self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
     
     def print_positions(self, slice_step=10):#print positions trajectories
