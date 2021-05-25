@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 from matplotlib import pyplot as plt
 
@@ -211,21 +212,25 @@ class SetUp:
                                     'velocity': {'um': um, 'uw': uw, 'w':w, 'k':k, 'advected':advected},
                                     },
                         output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
+        
         self.out_ds=self.in_ds.xsimlab.run(model=self.model)
-        
-        self.update_adv()
+        self.add_()
+
+   
+    def add_(self): #give attrs and update adv
+
+        self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
         self.out_ds.advancement.attrs={"units":"m", "long_name":"Advancement"}
-        
         self.out_ds.otime.attrs={"units":'s', 'long_name':'Time'}
         
         otime_day = self.out_ds.otime/(24*3600)
+
         self.out_ds.coords['otime_day']=otime_day
         self.out_ds.otime_day.attrs={"units":"day", "long_name":"Time"}
         
         self.out_ds.a.attrs={"units":"m", "long_name":"Particule initial position"}
-        
-        
-        
+
+
     
     def __getitem__(self, item):
         if item=="p":
@@ -241,15 +246,12 @@ class SetUp:
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         self.model = (self.model).update_processes(process)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
-        self.update_adv()
+        self.add_()
             
     def update_parameters(self,**parameters):#change one or several parameters 
         self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars=parameters)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
-        self.update_adv()
-        
-    def update_adv(self):
-        self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
+        self.add_()
     
     def print_positions(self, slice_step=10):#print positions trajectories
         self.out_ds.position__p.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
@@ -273,3 +275,59 @@ class SetUp:
             _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.velocity__um, self.out_ds.velocity__uw, self.out_ds.velocity__w, self.out_ds.velocity__k)
         
         return np.all(_va==self.out_ds.velocity__v)  
+
+    
+#TEMPORAL INTEGRATION COMPARISON    
+class Temp_Int_Comp:
+    
+    def __init__(self, x):#x un objet SetUp
+
+        ae2=x['adv']**2
+        ve=x['v']
+
+        x.update_model(intmethod=Runge_Kutta2)
+        ark22=x['adv']**2
+        vrk2=x['v']
+
+        x.update_model(intmethod=Runge_Kutta4)
+        ark42=x['adv']**2
+        vrk4=x['v']
+
+        x_ref=SetUp(time= list(np.arange(0,d2s*4, h2s/6)))#10 min step
+        x_ref.update_model(intmethod=Runge_Kutta4)
+        ark42_ref=x_ref['adv']**2
+        v_ref=x_ref['v']
+
+        self.ds=xr.concat([ae2, ark22, ark42, ark42_ref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+        self.ds.name='square advancement'
+        self.ds=self.ds.to_dataset(name='square_adv')
+
+        self.ds['square_adv_km']=self.ds.square_adv/1000000
+        self.ds.square_adv_km.attrs={"units":"km²", "long_name":"Square advancement"}
+        self.ds['velocities']=xr.concat([ve, vrk2, vrk4, v_ref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+        
+        aref=self.ds.sel(int_method='Reference')
+
+        Aref=xr.concat([aref, aref, aref, aref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+
+        self.ds['diff_sqr_adv']=self.ds.square_adv-Aref.square_adv
+        self.ds.diff_sqr_adv.attrs={"units":"m²", "long_name":"Square advancement difference with reference"}
+
+        self.ds['diff_sqr_adv_km']=self.ds.square_adv_km-Aref.square_adv_km
+        self.ds.diff_sqr_adv_km.attrs={"units":"km²", "long_name":"Square advancement difference with reference"}
+
+        self.ds['diff_velocities']=self.ds.velocities-Aref.velocities
+        self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
+
+    def print_diff_sqr_adv(self, traj=20):
+        self.ds.square_adv_km.isel(a=traj, otime=np.arange(75,95)).plot(x="otime_day", marker='.', figsize=(15,15), hue="int_method" )
+        self.ds.diff_sqr_adv_km.isel(a=traj, otime=np.arange(0,95), int_method=[0,1,2]).plot(marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_sqr_adv.isel(a=traj, otime=np.arange(0,95), int_method=2).plot(marker='.',hue="int_method", figsize=(9,9))
+        
+    def print_diff_velocities(self, traj=20):
+        self.ds.diff_velocities.isel(a=traj, otime=np.arange(0,95), int_method=[0,1,2]).plot(marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_velocities.isel(a=traj, otime=np.arange(0,95), int_method=2).plot(marker='.',hue="int_method", figsize=(9,9))
+    
+    def __getitem__(self, item):
+        if item=='ds':
+            return self.ds
