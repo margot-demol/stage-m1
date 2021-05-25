@@ -23,7 +23,7 @@ class Position:
     """Compute the evolution of positions"""
 
     p_vars = xs.group("p_vars")
-    p = xs.variable(dims="a", intent="inout", description="positions of particules", attrs={"units": "m"})
+    p = xs.variable(dims="a", intent="inout", description="positions of particules", attrs={"units": "m", "long_name":"Positions"})
     
     def run_step(self):
         self._delta_p = sum((x for x in self.p_vars))
@@ -55,7 +55,7 @@ class AnaVelocity:
     advected = xs.variable(description="advected wave", attrs={"units":"1"})#booléen
     
     # variables
-    v = xs.variable(dims="a", intent="out", description="velocity of particules", attrs={"units": "m/s"})
+    v = xs.variable(dims="a", intent="out", description="velocity of particules", attrs={"units": "m/s", "long_name":"Velocities"})
     p = xs.foreign(Position, "p", intent="in")
     
     def velocity_func(self, *args):
@@ -212,7 +212,30 @@ class SetUp:
                                     },
                         output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
         self.out_ds=self.in_ds.xsimlab.run(model=self.model)
+        
         self.update_adv()
+        self.out_ds.advancement.attrs={"units":"m", "long_name":"Advancement"}
+        
+        self.out_ds.otime.attrs={"units":'s', 'long_name':'Time'}
+        
+        otime_day = self.out_ds.otime/(24*3600)
+        self.out_ds.coords['otime_day']=otime_day
+        self.out_ds.otime_day.attrs={"units":"day", "long_name":"Time"}
+        
+        self.out_ds.a.attrs={"units":"m", "long_name":"Particule initial position"}
+        
+        
+        
+    
+    def __getitem__(self, item):
+        if item=="p":
+            return self.out_ds.position__p
+        if item=="v":
+            return self.out_ds.velocity__v
+        if item=="adv":
+            return self.out_ds.advancement
+        if item=='otime':
+            return self.out_ds.otime
         
         
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
