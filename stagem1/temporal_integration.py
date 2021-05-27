@@ -280,7 +280,7 @@ class SetUp:
 #TEMPORAL INTEGRATION COMPARISON    
 class Temp_Int_Comp:
     
-    def __init__(self, x):#x un objet SetUp
+    def __init__(self, x, **arg):#x un objet SetUp
 
         ae2=x['adv']**2
         ve=x['v']
@@ -293,22 +293,27 @@ class Temp_Int_Comp:
         ark42=x['adv']**2
         vrk4=x['v']
 
-        x_ref=SetUp(time= list(np.arange(0,d2s*4, h2s/6)))#10 min step
+        x_ref=SetUp(time= list(np.arange(0,d2s*4, h2s/6)), **arg)#10 min step
         x_ref.update_model(intmethod=Runge_Kutta4)
         ark42_ref=x_ref['adv']**2
         v_ref=x_ref['v']
+        
+        x_crash=SetUp(time= list(np.arange(0,d2s*4, h2s*4)),otime=list(np.arange(0,d2s*4, h2s*8)), **arg)#10 min step
+        x_crash.update_model(intmethod=Runge_Kutta4)
+        ark42_crash=x_crash['adv']**2
+        v_crash=x_crash['v']
 
-        self.ds=xr.concat([ae2, ark22, ark42, ark42_ref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+        self.ds=xr.concat([ae2, ark22, ark42, ark42_crash, ark42_ref], pd.Index(["Euler", "RK2", "RK4", 'RK4 4h', "RK4 10min (reference)"], name="int_method"))
         self.ds.name='square advancement'
         self.ds=self.ds.to_dataset(name='square_adv')
 
         self.ds['square_adv_km']=self.ds.square_adv/1000000
         self.ds.square_adv_km.attrs={"units":"km²", "long_name":"Square advancement"}
-        self.ds['velocities']=xr.concat([ve, vrk2, vrk4, v_ref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+        self.ds['velocities']=xr.concat([ve, vrk2, vrk4, v_crash, v_ref], pd.Index(["Euler", "RK2", "RK4", 'RK4 4h', "RK4 10min (reference)"], name="int_method"))
         
-        aref=self.ds.sel(int_method='Reference')
+        aref=self.ds.sel(int_method='RK4 10min (reference)')
 
-        Aref=xr.concat([aref, aref, aref, aref], pd.Index(["Euler", "RK2", "RK4", "Reference"], name="int_method"))
+        Aref=xr.concat([aref, aref, aref, aref,aref], pd.Index(["Euler", "RK2", "RK4", 'RK4 4h', "RK4 10min (reference)"], name="int_method"))
 
         self.ds['diff_sqr_adv']=self.ds.square_adv-Aref.square_adv
         self.ds.diff_sqr_adv.attrs={"units":"m²", "long_name":"Square advancement difference with reference"}
@@ -318,15 +323,18 @@ class Temp_Int_Comp:
 
         self.ds['diff_velocities']=self.ds.velocities-Aref.velocities
         self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
+        print(self.ds)
 
     def print_diff_sqr_adv(self, traj=20):
-        self.ds.square_adv_km.isel(a=traj, otime=np.arange(75,95)).plot(x="otime_day", marker='.', figsize=(15,15), hue="int_method" )
-        self.ds.diff_sqr_adv_km.isel(a=traj, otime=np.arange(0,95), int_method=[0,1,2]).plot(marker='.',hue="int_method", figsize=(9,9))
-        self.ds.diff_sqr_adv.isel(a=traj, otime=np.arange(0,95), int_method=2).plot(marker='.',hue="int_method", figsize=(9,9))
+        self.ds.square_adv_km.isel(a=traj).plot(x="otime_day", marker='.', figsize=(15,15), hue="int_method" )
+        self.ds.diff_sqr_adv_km.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_sqr_adv_km.isel(a=traj, int_method=[2,3]).plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_sqr_adv.isel(a=traj, int_method=[2]).plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))
         
     def print_diff_velocities(self, traj=20):
-        self.ds.diff_velocities.isel(a=traj, otime=np.arange(0,95), int_method=[0,1,2]).plot(marker='.',hue="int_method", figsize=(9,9))
-        self.ds.diff_velocities.isel(a=traj, otime=np.arange(0,95), int_method=2).plot(marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_velocities.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_velocities.isel(a=traj, int_method=[2]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_velocities.isel(a=traj, int_method=[2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
     
     def __getitem__(self, item):
         if item=='ds':
