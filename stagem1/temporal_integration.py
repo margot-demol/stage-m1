@@ -40,7 +40,7 @@ def analytical_velocity_advected(t, x, um, uw, w, k):
     return um + uw*np.cos(w*t-k*(x-um*t))
 
 def analytical_velocity_unadvected(t, x, um, uw, w, k):
-    return (um + uw*np.cos(w*t-k*x))
+    return (um + uw*np.cos(w*t-k*x+np.pi))
 
 @xs.process
 class AnaVelocity:
@@ -241,7 +241,16 @@ class SetUp:
             return self.out_ds.advancement
         if item=='otime':
             return self.out_ds.otime
-        
+        if item=='um':
+            return float(self.out_ds.velocity__um)
+        if item=='uw':
+            return float(self.out_ds.velocity__uw)
+        if item=='w':
+            return float(self.out_ds.velocity__w)
+        if item=='k':
+            return float(self.out_ds.velocity__k)
+        if item=='advected':
+            return float(self.out_ds.velocity__advected)
         
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         self.model = (self.model).update_processes(process)
@@ -253,7 +262,7 @@ class SetUp:
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
         self.add_()
     
-    def update_clock(self,**clock): otime=list(np.arange)
+    def update_clock(self,**clock): 
         self.in_ds = self.in_ds.xsimlab.update_clocks(model=self.model, clocks=clock)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
         self.add_()
@@ -287,8 +296,27 @@ class SetUp:
     
     def print_adv(self, slice_step=10):
         self.out_ds.advancement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
-
     
+    def velocity_func(self, *args):
+        if self['advected']:
+            return analytical_velocity_advected(*args)
+        else:
+            return analytical_velocity_unadvected(*args)    
+    
+    
+    def velocity_field(self):
+        T=np.arange(float(self.out_ds.otime.min('otime')),float(self.out_ds.otime.max('otime')),1200)
+        X=np.arange(float(self['p'].min(dim=['a','otime'])),float(self['p'].max(dim=['a','otime'])),1000)
+        len_t=len(T)
+        len_x=len(X)
+        VF=np.zeros((len_t, len_x))
+        for i in range(len_t):
+            for j in range (len_x):
+                VF[i,j]=self.velocity_func(T[i], X[j], self['um'], self['uw'], self['w'], self['k'])
+
+        return xr.DataArray(data=VF, dims=["t", "x"], coords=dict(t=(["t"], T),x=(["x"], X)))
+        
+        
     def analytical_comparison(self):#verify model respects the analytical solution
         if self.out_ds.velocity__advected:
             _va=analytical_velocity_advected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.velocity__um, self.out_ds.velocity__uw, self.out_ds.velocity__w, self.out_ds.velocity__k)
@@ -345,21 +373,19 @@ class Temp_Int_Comp:
         self.ds['diff_velocities']=self.ds.velocities-Aref.velocities
         self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
         
+        
     def reglin_mean_adv(self):
         reglin=self.ds.adv.mean(dim='a').polyfit(dim='otime',deg=1)
         return reglin
 
-    def print_diff_sqr_adv(self, traj=20):
+    def print_diff_adv(self, traj=20):
         self.ds.adv_km.isel(a=traj).plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
         self.ds.diff_adv.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
-        #self.ds.diff_adv.isel(a=traj, int_method=[2,3]).plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))
-        #self.ds.diff_adv.isel(a=traj, int_method=[2]).plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))
         
-    def print_diff_sqr_adv_mean(self, traj=20):
-        self.ds.adv_km.mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        self.ds.diff_adv.isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
-        #self.ds.diff_adv.isel(int_method=[2,3]).mean(dim='a').plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))
-        #self.ds.diff_adv.isel(int_method=[2]).mean(dim='a').plot(x="otime_day", marker='.',hue="int_method", figsize=(9,9))     
+    def print_diff_adv_mean(self, traj=20):
+        abs(self.ds.adv_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
+        abs(self.ds.diff_adv).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+ 
         
     def print_diff_velocities(self, traj=20):
         self.ds.diff_velocities.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
