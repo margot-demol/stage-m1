@@ -219,7 +219,7 @@ class SetUp:
    
     def add_(self): #give attrs and update adv
 
-        self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
+        self.out_ds['advancement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)####Résout le pb mais étrange
         self.out_ds.advancement.attrs={"units":"m", "long_name":"Advancement"}
         self.out_ds.otime.attrs={"units":'s', 'long_name':'Time'}
         
@@ -330,26 +330,27 @@ class SetUp:
 class Temp_Int_Comp:
     
     def __init__(self, x, **arg):#x un objet SetUp
-
-        ae=x['adv']#**2
+        
+        x.update_model(intmethod=Euler)
+        ae=x['adv']
         ve=x['v']
 
         x.update_model(intmethod=Runge_Kutta2)
-        ark2=x['adv']#**2
+        ark2=x['adv']
         vrk2=x['v']
 
         x.update_model(intmethod=Runge_Kutta4)
-        ark4=x['adv']#**2
+        ark4=x['adv']
         vrk4=x['v']
 
         x_ref=SetUp(time= list(np.arange(0,d2s*4, h2s/6)), **arg)#10 min step
         x_ref.update_model(intmethod=Runge_Kutta4)
-        ark4_ref=x_ref['adv']#**2
+        ark4_ref=x_ref['adv']
         v_ref=x_ref['v']
         
         x_crash=SetUp(time= list(np.arange(0,d2s*4, h2s*3)),otime=list(np.arange(0,d2s*4-h2s, h2s*3)), **arg)#10 min step
         x_crash.update_model(intmethod=Runge_Kutta4)
-        ark4_crash=x_crash['adv']#**2
+        ark4_crash=x_crash['adv']
         v_crash=x_crash['v']
 
         self.ds=xr.concat([ae, ark2, ark4, ark4_crash, ark4_ref], pd.Index(["Euler", "RK2", "RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
@@ -364,7 +365,7 @@ class Temp_Int_Comp:
 
         Aref=xr.concat([aref, aref, aref, aref,aref], pd.Index(["Euler", "RK2", "RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
 
-        self.ds['diff_adv']=self.ds.adv-Aref.adv
+        self.ds['diff_adv']=(self.ds.adv-Aref.adv)
         self.ds.diff_adv.attrs={"units":"m", "long_name":"Advancement difference with reference"}
 
         self.ds['diff_adv_km']=self.ds.adv_km-Aref.adv_km
@@ -379,8 +380,8 @@ class Temp_Int_Comp:
         return reglin
 
     def print_diff_adv(self, traj=20):
-        self.ds.adv_km.isel(a=traj).plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        self.ds.diff_adv.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.adv_km.isel(a=traj).sel( method='nearest').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )#otime=np.arange(48*h2s,72*h2s,h2s)
+        self.ds.diff_adv.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
         
     def print_diff_adv_mean(self, traj=20):
         abs(self.ds.adv_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
