@@ -40,7 +40,7 @@ def analytical_velocity_advected(t, x, um, uw, w, k):
     return um + uw*np.cos(w*t-k*(x-um*t))
 
 def analytical_velocity_unadvected(t, x, um, uw, w, k):
-    return (um + uw*np.cos(w*t-k*x+np.pi))
+    return (um + uw*np.cos(w*t-k*x))
 
 @xs.process
 class AnaVelocity:
@@ -292,7 +292,8 @@ class SetUp:
                 self.out_ds.isel(otime=0).plot.scatter(x="a", y="position__p", marker='.', c='red', s=1, ax=ax)
     
     def print_velocities(self, slice_step=10):#print velocities for different otime
-        self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
+        #self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
+        self.out_ds.velocity__v.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
     
     def print_adv(self, slice_step=10):
         self.out_ds.advancement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
@@ -380,11 +381,11 @@ class Temp_Int_Comp:
         return reglin
 
     def print_diff_adv(self, traj=20):
-        self.ds.adv_km.isel(a=traj).sel( method='nearest').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )#otime=np.arange(48*h2s,72*h2s,h2s)
+        #self.ds.adv_km.isel(a=traj).sel( method='nearest').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )#otime=np.arange(48*h2s,72*h2s,h2s)
         self.ds.diff_adv.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
         
     def print_diff_adv_mean(self, traj=20):
-        abs(self.ds.adv_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
+        #abs(self.ds.adv_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
         abs(self.ds.diff_adv).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
  
         
@@ -396,3 +397,80 @@ class Temp_Int_Comp:
     def __getitem__(self, item):
         if item=='ds':
             return self.ds
+
+        
+        
+#DEPENDENCY COMP       
+def dependency_comp_ds(list_Var, Dt, T, OT,
+                        list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
+                        dim_name=['um', 'uw','w','k'],
+                        selected_time=list(np.arange(48,72,1))):#two periods
+        
+    x_ref=SetUp(time= list(np.arange(0,d2s*4,h2s/6)))#10 min step 
+    x_ref.update_model(intmethod=Runge_Kutta4)
+
+    def batch_time(x,ad_ref): 
+        list_ad=[]    
+        for j in range (len(Dt)):
+            x.update_clock(time=T[j], otime=OT[j])
+            ds_b=x.out_ds
+            ad=((ds_b.advancement-ad_ref).max('otime')-(ds_b.advancement-ad_ref).min('otime')).mean('a')#-(ds_b.advancement-ad_ref).sel(otime=selected_time*sti.h2s).min('otime'))
+            list_ad.append(ad)
+        return xr.concat(list_ad, pd.Index((Dt), name="delta_t"))
+
+    #Velocity Variables
+    for i in range (len(list_Var)):
+        ds_b=x_ref.batch_parameters(list_Var_Name[i], list_Var[i])
+        dref=ds_b.advancement
+     
+        
+        x=SetUp()
+        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
+        de=((ds_b.advancement-dref).isel(otime=selected_time).max('otime')-(ds_b.advancement-dref).isel(otime=selected_time).min('otime')).mean('a')
+
+    
+        x.update_model(intmethod=Runge_Kutta2)
+        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
+        drk2=((ds_b.advancement-dref).isel(otime=selected_time).max('otime')-(ds_b.advancement-dref).isel(otime=selected_time).min('otime')).mean('a')
+    
+        x.update_model(intmethod=Runge_Kutta4)
+        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
+        drk4=((ds_b.advancement-dref).isel(otime=selected_time).max('otime')-(ds_b.advancement-dref).isel(otime=selected_time).min('otime')).mean('a')
+    
+
+
+    
+        ds=xr.concat([de, drk2, drk4], pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
+        ds=ds.assign_coords({dim_name[i]:("batch", list_Var[i])})
+        ds=ds.assign_attrs(units='m')
+        ds=ds.rename({'batch':dim_name[i]})
+        if i==0:
+            DS=ds.to_dataset(name='error_adv_'+dim_name[0], promote_attrs=True)
+        else:
+            DS=DS.assign({'error_adv_'+ dim_name[i]: ds})
+    
+    #Delta Time  
+    x=SetUp()
+    x_ref=SetUp(time= list(np.arange(0,d2s*4,h2s/6)))#10 min step 
+    x_ref.update_model(intmethod=Runge_Kutta4)
+    ad_ref=x_ref.out_ds.advancement
+    list_dm=[batch_time(x,ad_ref)]
+    x.update_model(intmethod=Runge_Kutta2)
+    list_dm.append(batch_time(x,ad_ref))
+    x.update_model(intmethod=Runge_Kutta4)
+    list_dm.append(batch_time(x,ad_ref))
+    ds=xr.concat(list_dm, pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
+    ds=ds.assign_attrs(units='m')
+    DS=DS.assign({'error_adv_delta_time': ds})
+    
+    #ATTRS
+    DS.um.attrs={'units':'m/s', "long_name":"mean flux velocity"}
+    DS.uw.attrs={'units':'m/s', "long_name":"wave velocity"}
+    DS.w.attrs={'units':'s⁻¹', "long_name":"wave pulsation"}
+    DS.k.attrs={'units':'m⁻¹', "long_name":"wave vector"}
+    DS.delta_t.attrs={'units':'min',"long_name":"simulation time step"}
+    
+    DS.coords['delta_t_min']=DS.delta_t/60
+    DS.delta_t_min.attrs={"units":"min", "long_name":"simulation time step"}
+    return DS
+
