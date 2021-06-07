@@ -219,7 +219,10 @@ class SetUp:
    
     def add_(self): #give attrs and update adv
 
-        self.out_ds['displacement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)####Résout le pb mais étrange
+        self.out_ds['position_km'] = self.out_ds.position__p/km
+        self.out_ds.position_km.attrs={"units":"km", "long_name":"Position"}
+        
+        self.out_ds['displacement'] = self.out_ds.position__p-self.out_ds.position__p.isel(otime=0)
         self.out_ds.displacement.attrs={"units":"m", "long_name":"Displacement"}
         self.out_ds.otime.attrs={"units":'s', 'long_name':'Time'}
         
@@ -235,6 +238,8 @@ class SetUp:
     def __getitem__(self, item):
         if item=="p":
             return self.out_ds.position__p
+        if item=="p_km":
+            return self.out_ds.position_km
         if item=="v":
             return self.out_ds.velocity__v
         if item=="dis":
@@ -315,7 +320,8 @@ class SetUp:
             for j in range (len_x):
                 VF[i,j]=self.velocity_func(T[i], X[j], self['um'], self['uw'], self['w'], self['k'])
 
-        return xr.DataArray(data=VF, dims=["t", "x"], coords=dict(t=(["t"], T),x=(["x"], X)))
+       
+        return xr.DataArray(data=VF, dims=["t", "x"], coords=dict(t=(["t"], T/(24*3600.)),x=(["x"], X/1000)),attrs={'units':'m/s', 'long_name':'Velocity'})
         
         
     def analytical_comparison(self):#verify model respects the analytical solution
@@ -395,7 +401,12 @@ class Temp_Int_Comp:
 
     def print_diff_dis(self, traj=20):
         #self.ds.dis_km.isel(a=traj).sel( method='nearest').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        #self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        LABEL=self.ds.int_method.values
+        self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue='int_method', label=LABEL[:-1], figsize=(9,9))
+        #for i in range(1, len(LABEL)):
+          #  fg.self.ds.diff_dis.isel(a=traj,int_method=i).plot(x="otime_day",marker='.',label=LABEL[i], figsize=(9,9),ax=ax)
+
         
     def print_diff_dis_mean(self, traj=20):
         #abs(self.ds.dis_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
