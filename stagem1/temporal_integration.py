@@ -314,6 +314,9 @@ class SetUp:
         out_ds_b.coords['otime_day']=otime_day
         out_ds_b.otime_day.attrs={"units":"day", "long_name":"Time"}
         
+        out_ds_b['position_km'] =out_ds_b.position__p/km
+        out_ds_b.position_km.attrs={"units":"km", "long_name":"Position"}
+        
         out_ds_b.a.attrs={"units":"m", "long_name":"Particule initial position"}
         return out_ds_b
     
@@ -329,7 +332,7 @@ class SetUp:
         #self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
         self.out_ds.velocity__v.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
     
-    def print_adv(self, slice_step=10):
+    def print_dis(self, slice_step=10):
         self.out_ds.displacement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
     
     def velocity_func(self, *args):
@@ -339,17 +342,16 @@ class SetUp:
             return analytical_velocity_unadvected(*args)    
     
     
-    def velocity_field(self):
-        T=np.arange(float(self.out_ds.otime.min('otime')),float(self.out_ds.otime.max('otime')),1200)
-        X=np.arange(float(self['p'].min(dim=['a','otime'])),float(self['p'].max(dim=['a','otime'])),1000)
+    def velocity_field(self, r_t=2, r_x=2):
+        t=self.out_ds.otime
+        T=np.arange(float(t.min('otime')),float(t.max('otime')),r_t*len(t))
+        X=np.arange(float(self['p'].min(dim=['a','otime'])),float(self['p'].max(dim=['a','otime'])),r_x*len(self["p"]))
         len_t=len(T)
         len_x=len(X)
         VF=np.zeros((len_t, len_x))
         for i in range(len_t):
             for j in range (len_x):
                 VF[i,j]=self.velocity_func(T[i], X[j], self['um'], self['uw'], self['w'], self['k'])
-
-       
         return xr.DataArray(data=VF, dims=["t", "x"], coords=dict(t=(["t"], T/(24*3600.)),x=(["x"], X/1000)),attrs={'units':'m/s', 'long_name':'Velocity'})
         
         
@@ -389,12 +391,13 @@ class Temp_Int_Comp:
         vrk4=x['v']
 
         x_ref=SetUp(time= list(np.arange(0,d2s*6, h2s/6)), **arg)#10 min step
+        #x.update_clock(time= list(np.arange(0,d2s*6, h2s/6)))#10 min step
         x_ref.update_model(intmethod=Runge_Kutta4)
         p_ref=x_ref['p']
         ark4_ref=x_ref['dis']
         v_ref=x_ref['v']
         
-        x_crash=SetUp(time= list(np.arange(0,d2s*6, h2s*3)),otime=list(np.arange(0,d2s*6-h2s, h2s*3)), **arg)#10 min step
+        x_crash=SetUp(time=list(np.arange(0,d2s*6, h2s*3)),otime=list(np.arange(0,d2s*6-h2s, h2s*3)),**arg)#10 min step
         x_crash.update_model(intmethod=Runge_Kutta4)
         p_crash=x_crash['p']
         ark4_crash=x_crash['dis']
@@ -429,45 +432,31 @@ class Temp_Int_Comp:
         self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
         
         
-        
-    def reglin_mean_dis(self):
-        reglin=self.ds.dis.mean(dim='a').polyfit(dim='otime',deg=1)
-        return reglin
-
-    def print_diff_dis(self, traj=20):
-        #self.ds.dis_km.isel(a=traj).sel( method='nearest').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        #self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
         LABEL=self.ds.int_method.values
+    def print_diff_dis(self, traj=20):
         self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3,4]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
-        #for i in range(1, len(LABEL)):
-          #  fg.self.ds.diff_dis.isel(a=traj,int_method=i).plot(x="otime_day",marker='.',label=LABEL[i], figsize=(9,9),ax=ax)
 
         
     def print_diff_dis_mean(self, traj=20):
         #abs(self.ds.dis_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        abs(self.ds.diff_dis).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        abs(self.ds.diff_dis).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
  
         
     def print_diff_velocities(self, traj=20):
-        self.ds.diff_velocities.isel(a=traj, int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
-        self.ds.diff_velocities.isel(a=traj, int_method=[2]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
-        self.ds.diff_velocities.isel(a=traj, int_method=[2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.diff_velocities.isel(a=traj).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
     
-    def __getitem__(self, item):
-        if item=='ds':
-            return self.ds
-    
+   
     def print_traj(self,traj=20):
-        self.ds.position.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",marker='.',hue="int_method", figsize=(9,9))
+        self.ds.position.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
         
         
         
 #DEPENDENCY COMP       
-def dependency_ds(list_Var, Dt, T, OT,
+def dependency_ds(list_Var, Dt, T, OT,mean_b, mean_c,
                         list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
                         dim_name=['um', 'uw','w','k'],
-                        selected_time=list(np.arange(48,72,1)),**kwargs):
-        
+                        **kwargs):
+    selected_time=list(np.arange(mean_b,mean_e,1))    
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)), **kwargs)#10 min step 
     x_ref.update_model(intmethod=Runge_Kutta4)
 
@@ -477,7 +466,7 @@ def dependency_ds(list_Var, Dt, T, OT,
             x.update_clock(time=T[j], otime=OT[j])
             ds_b=x.out_ds
             dtamp=abs(ds_b.displacement-ad_ref)**2
-            ad=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))#-(ds_b.advancement-ad_ref).sel(otime=selected_time*sti.h2s).min('otime'))
+            ad=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
             list_ad.append(ad)
         return xr.concat(list_ad, pd.Index((Dt), name="delta_t"))
 
@@ -489,7 +478,6 @@ def dependency_ds(list_Var, Dt, T, OT,
         
         x=SetUp(**kwargs)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        #de=((ds_b.displacement-dref).isel(otime=selected_time).max('otime')-(ds_b.displacement-dref).isel(otime=selected_time).min('otime')).mean('a')
         dtamp=(ds_b.displacement-dref)**2
         de=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
 
@@ -551,9 +539,10 @@ def dependency_ds(list_Var, Dt, T, OT,
 def dependency_ds_max(list_Var, Dt, T, OT,
                         list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
                         dim_name=['um', 'uw','w','k'],
-                        selected_time=list(np.arange(48,72,1)),
-                       **kwargs):#two periods
-        
+                        mean_b=96,mean_e=144)
+                       **kwargs):
+                                                                
+    selected_time=list(np.arange(mean_b,mean_e,1))   
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
     x_ref.update_model(intmethod=Runge_Kutta4)
 
@@ -625,4 +614,8 @@ def dependency_ds_max(list_Var, Dt, T, OT,
     
     DS.coords['delta_t_min']=DS.delta_t/60
     DS.delta_t_min.attrs={"units":"min", "long_name":"simulation time step"}
+    DS.coords['Lambda']=2*np.pi/(DS.k)/km
+    DS.Lambda.attrs={"units":"km", "long_name":"wave lenght"}
+    DS.coords['Ts']=2*np.pi/(DS.w)/(3600)
+    DS.Ts.attrs={"units":"hours", "long_name":"wave period"}
     return DS
