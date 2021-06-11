@@ -287,10 +287,21 @@ class SetUp:
             return float(self.out_ds.velocity__advected)
         
     def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
+        
         self.model = (self.model).update_processes(process)
+        #CAUTION: CREATE NEW IN_DS (PROBLEM WITH P_VARS OTHERWISE)
+        self.in_ds=xs.create_setup(model=self.model,
+                            clocks={'time': self.in_ds.time,
+                                    'otime': self.in_ds.otime}, 
+                        master_clock='time',
+                        input_vars={'init': {'mini': self.in_ds.init__mini, 'maxi':self.in_ds.init__maxi, 'N':self.in_ds.init__N},
+                                    'velocity': {'um': self.in_ds.velocity__um, 'uw': self.in_ds.velocity__uw, 'w':self.in_ds.velocity__w, 'k':self.in_ds.velocity__k, 'advected':self.in_ds.velocity__advected},
+                                    },
+                        output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
         self.add_()
-            
+        
+        
     def update_parameters(self,**parameters):#change one or several parameters, velocity__uw ...
         self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars=parameters)
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
@@ -342,10 +353,10 @@ class SetUp:
             return analytical_velocity_unadvected(*args)    
     
     
-    def velocity_field(self, r_t=2, r_x=2):
+    def velocity_field(self, r_t=2, r_x=5):
         t=self.out_ds.otime
-        T=np.arange(float(t.min('otime')),float(t.max('otime')),r_t*len(t))
-        X=np.arange(float(self['p'].min(dim=['a','otime'])),float(self['p'].max(dim=['a','otime'])),r_x*len(self["p"]))
+        T=np.linspace(float(t.min('otime')),float(t.max('otime')),r_t*len(t))
+        X=np.linspace(float(self['p'].min(dim=['a','otime'])),float(self['p'].max(dim=['a','otime'])),r_x*len(self["p"]))
         len_t=len(T)
         len_x=len(X)
         VF=np.zeros((len_t, len_x))
@@ -432,27 +443,31 @@ class Temp_Int_Comp:
         self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
         
         
-        LABEL=self.ds.int_method.values
+    
     def print_diff_dis(self, traj=20):
+        LABEL=self.ds.int_method.values
         self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3,4]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
 
         
     def print_diff_dis_mean(self, traj=20):
+        LABEL=self.ds.int_method.values
         #abs(self.ds.dis_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        abs(self.ds.diff_dis).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
+        abs(self.ds.diff_dis).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
  
         
     def print_diff_velocities(self, traj=20):
-        self.ds.diff_velocities.isel(a=traj).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
+        LABEL=self.ds.int_method.values
+        self.ds.diff_velocities.isel(a=traj).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
     
    
     def print_traj(self,traj=20):
-        self.ds.position.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6)
+        LABEL=self.ds.int_method.values
+        self.ds.position.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
         
         
         
 #DEPENDENCY COMP       
-def dependency_ds(list_Var, Dt, T, OT,mean_b, mean_c,
+def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_c=144,
                         list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
                         dim_name=['um', 'uw','w','k'],
                         **kwargs):
@@ -536,11 +551,10 @@ def dependency_ds(list_Var, Dt, T, OT,mean_b, mean_c,
 
 
 #DEPENDENCY COMP       
-def dependency_ds_max(list_Var, Dt, T, OT,
+def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
                         list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
                         dim_name=['um', 'uw','w','k'],
-                        mean_b=96,mean_e=144)
-                       **kwargs):
+                        **kwargs):
                                                                 
     selected_time=list(np.arange(mean_b,mean_e,1))   
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
