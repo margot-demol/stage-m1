@@ -32,7 +32,7 @@ integration method `intmethod` should be among 'Euler', 'Runge_Kutta2', 'Runge_K
 `time` and `otime` list should not be the same (x array sim-lab doesn't like it)
 
 ### Methods to use on SetUp object x
-- To change the integration method: `x.update_model(intmethod=sti.newmethod)` with new method in 'Euler', 'Runge_Kutta2', 'Runge_Kutta2_1' or 'Runge_Kutta4'
+- To change the integration method: `x.update_intmethod(sti.newmethod)` with new method in 'Euler', 'Runge_Kutta2', 'Runge_Kutta2_1' or 'Runge_Kutta4'
 - To change parameters: `x.update_parameters(par1=..., par2=...)` with par1 and par2 in `velocity__um`, `velocity__uw`, `velocity__k`, `velocity__w`, `init_mini`, `init_maxi`, `init_N`.
 - To change the clock: `x.update_clock(time=..., otime=...)`
 - To plot positions: `x.print_positions(slice_step=10)` for trajectories for every ten particules,  or `x.print_positions_fac(slice_step=10)` for positions for all particules at every t spaced of ten time step.

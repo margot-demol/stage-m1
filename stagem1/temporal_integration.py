@@ -286,18 +286,17 @@ class SetUp:
         if item=='advected':
             return float(self.out_ds.velocity__advected)
         
-    def update_model(self,**process):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
+    def update_intmethod(self,intmethod):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         
-        self.model = (self.model).update_processes(process)
-        #CAUTION: CREATE NEW IN_DS (PROBLEM WITH P_VARS OTHERWISE)
-        self.in_ds=xs.create_setup(model=self.model,
-                            clocks={'time': self.in_ds.time,
-                                    'otime': self.in_ds.otime}, 
-                        master_clock='time',
-                        input_vars={'init': {'mini': self.in_ds.init__mini, 'maxi':self.in_ds.init__maxi, 'N':self.in_ds.init__N},
-                                    'velocity': {'um': self.in_ds.velocity__um, 'uw': self.in_ds.velocity__uw, 'w':self.in_ds.velocity__w, 'k':self.in_ds.velocity__k, 'advected':self.in_ds.velocity__advected},
-                                    },
-                        output_vars={'position__p' : 'otime','velocity__v' : 'otime'})
+        #self.model = (self.model).update_processes(process)
+        self.model= xs.Model({
+            "position": Position,
+            "init": InitPRegular,
+            "intmethod": intmethod,
+            "velocity": AnaVelocity
+        })
+        #CAUTION: CREATE NEW MODEL (PROBLEM WITH P_VARS OTHERWISE)
+
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
         self.add_()
         
@@ -375,41 +374,43 @@ class SetUp:
         return np.all(_va==self.out_ds.velocity__v)  
 
     
+    
+    
 #TEMPORAL INTEGRATION COMPARISON    
 class Temp_Int_Comp:
     
     def __init__(self, x, **arg):#x un objet SetUp
         
-        x.update_model(intmethod=Euler)
+        x.update_intmethod(Euler)
         pe=x['p']
         ae=x['dis']
         ve=x['v']
 
-        x.update_model(intmethod=Runge_Kutta2)
+        x.update_intmethod(Runge_Kutta2)
         prk2=x['p']
         ark2=x['dis']
         vrk2=x['v']
         
-        x.update_model(intmethod=Runge_Kutta2_1)
+        x.update_intmethod(Runge_Kutta2_1)
         prk2_1=x['p']
         ark2_1=x['dis']
         vrk2_1=x['v']
         
 
-        x.update_model(intmethod=Runge_Kutta4)
+        x.update_intmethod(Runge_Kutta4)
         prk4=x['p']
         ark4=x['dis']
         vrk4=x['v']
 
         x_ref=SetUp(time= list(np.arange(0,d2s*6, h2s/6)), **arg)#10 min step
         #x.update_clock(time= list(np.arange(0,d2s*6, h2s/6)))#10 min step
-        x_ref.update_model(intmethod=Runge_Kutta4)
+        x_ref.update_intmethod(Runge_Kutta4)
         p_ref=x_ref['p']
         ark4_ref=x_ref['dis']
         v_ref=x_ref['v']
         
         x_crash=SetUp(time=list(np.arange(0,d2s*6, h2s*3)),otime=list(np.arange(0,d2s*6-h2s, h2s*3)),**arg)#10 min step
-        x_crash.update_model(intmethod=Runge_Kutta4)
+        x_crash.update_intmethod(Runge_Kutta4)
         p_crash=x_crash['p']
         ark4_crash=x_crash['dis']
         v_crash=x_crash['v']
@@ -467,13 +468,13 @@ class Temp_Int_Comp:
         
         
 #DEPENDENCY COMP       
-def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_c=144,
+def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_e=144,
                         list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
                         dim_name=['um', 'uw','w','k'],
                         **kwargs):
     selected_time=list(np.arange(mean_b,mean_e,1))    
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)), **kwargs)#10 min step 
-    x_ref.update_model(intmethod=Runge_Kutta4)
+    x_ref.update_intmethod(Runge_Kutta4)
 
     def batch_time(x,ad_ref): 
         list_ad=[]    
@@ -497,12 +498,12 @@ def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_c=144,
         de=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
 
     
-        x.update_model(intmethod=Runge_Kutta2)
+        x.update_intmethod(Runge_Kutta2)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=(ds_b.displacement-dref)**2
         drk2=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
     
-        x.update_model(intmethod=Runge_Kutta4)
+        x.update_intmethod(Runge_Kutta4)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=(ds_b.displacement-dref)**2
         drk4=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
@@ -522,12 +523,12 @@ def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_c=144,
     #Delta Time  
     x=SetUp(**kwargs)
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_model(intmethod=Runge_Kutta4)
+    x_ref.update_intmethod(Runge_Kutta4)
     ad_ref=x_ref.out_ds.displacement
     list_dm=[batch_time(x,ad_ref)]
-    x.update_model(intmethod=Runge_Kutta2)
+    x.update_intmethod(Runge_Kutta2)
     list_dm.append(batch_time(x,ad_ref))
-    x.update_model(intmethod=Runge_Kutta4)
+    x.update_intmethod(Runge_Kutta4)
     list_dm.append(batch_time(x,ad_ref))
     ds=xr.concat(list_dm, pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
     ds=ds.assign_attrs(units='m')
@@ -558,7 +559,7 @@ def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
                                                                 
     selected_time=list(np.arange(mean_b,mean_e,1))   
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_model(intmethod=Runge_Kutta4)
+    x_ref.update_intmethod(Runge_Kutta4)
 
     def batch_time(x,ad_ref): 
         list_ad=[]    
@@ -583,12 +584,12 @@ def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
         de=dtamp.max('otime').max('a')
 
     
-        x.update_model(intmethod=Runge_Kutta2)
+        x.update_intmethod(Runge_Kutta2)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=abs(ds_b.displacement-dref)
         drk2=dtamp.max('otime').max('a')
     
-        x.update_model(intmethod=Runge_Kutta4)
+        x.update_intmethod(Runge_Kutta4)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=abs(ds_b.displacement-dref)
         drk4=dtamp.max('otime').max('a')
@@ -608,12 +609,12 @@ def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
     #Delta Time  
     x=SetUp(**kwargs)
     x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_model(intmethod=Runge_Kutta4)
+    x_ref.update_intmethod(Runge_Kutta4)
     ad_ref=x_ref.out_ds.displacement
     list_dm=[batch_time(x,ad_ref)]
-    x.update_model(intmethod=Runge_Kutta2)
+    x.update_intmethod(Runge_Kutta2)
     list_dm.append(batch_time(x,ad_ref))
-    x.update_model(intmethod=Runge_Kutta4)
+    x.update_intmethod(Runge_Kutta4)
     list_dm.append(batch_time(x,ad_ref))
     ds=xr.concat(list_dm, pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
     ds=ds.assign_attrs(units='m')
@@ -633,3 +634,4 @@ def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
     DS.coords['Ts']=2*np.pi/(DS.w)/(3600)
     DS.Ts.attrs={"units":"hours", "long_name":"wave period"}
     return DS
+
