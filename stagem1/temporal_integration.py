@@ -445,9 +445,9 @@ class Temp_Int_Comp:
         
         
     
-    def print_diff_dis(self, traj=20):
+    def print_diff_dis(self, traj=20, **kwargs):
         LABEL=self.ds.int_method.values
-        self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3,4]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
+        self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3,4]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],**kwargs)
 
         
     def print_diff_dis_mean(self, traj=20):
