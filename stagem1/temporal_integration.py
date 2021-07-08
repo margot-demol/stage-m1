@@ -487,7 +487,8 @@ def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_e=144,
             x.update_clock(time=T[j], otime=OT[j])
             ds_b=x.out_ds
             dtamp=abs(ds_b.displacement-ad_ref)**2
-            ad=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+            #ad=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+            ad=np.sqrt(dtamp.where(dtamp.otime<6*24*3600).mean('otime').mean('a'))
             list_ad.append(ad)
         return xr.concat(list_ad, pd.Index((Dt), name="delta_t"))
 
@@ -501,17 +502,20 @@ def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_e=144,
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=(ds_b.displacement-dref)**2
         de=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+        #de=np.sqrt(dtamp.where(dtamp.otime<6*24*3600).mean('otime').mean('a'))
 
     
         x.update_intmethod(Runge_Kutta2)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=(ds_b.displacement-dref)**2
         drk2=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+        #drk2=np.sqrt(dtamp.where(dtamp.otime<6*24*3600).mean('otime').mean('a'))
     
         x.update_intmethod(Runge_Kutta4)
         ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
         dtamp=(ds_b.displacement-dref)**2
         drk4=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+        #drk4=np.sqrt(dtamp.where(dtamp.otime<6*24*3600).mean('otime').mean('a'))
     
 
 

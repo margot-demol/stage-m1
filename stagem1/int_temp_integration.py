@@ -73,13 +73,11 @@ class Velocity_Field:
     VF= xs.variable(dims=("t","x"), description="Eulerian velocity field",intent='out')
     x = xs.index(dims="x")
     t = xs.index(dims="t")
-
     
-    @xs.runtime()
-    def initialize(self):
-        self.t=np.arange(self.t_i,self.t_e,self.t_step)
-        self.x=np.arange(self.x_i,self.x_e,self.x_step)
-        #print(self.x[-1], self.t[-1])
+    @xs.runtime(args=["step_end"])
+    def initialize(self,te):
+        self.t=np.arange(self.t_i,self.t_e+self.t_step*2, self.t_step)#never reach border even with Lagrangian interpolation
+        self.x=np.arange(self.x_i,self.x_e+self.x_step*2,self.x_step)
         len_t=len(self.t)
         len_x=len(self.x)
         self.VF=np.zeros((len_t, len_x))
@@ -94,13 +92,15 @@ def bilinear_int(p_liste, ts, VF, x, t, t_step, x_step):
     it1 = np.searchsorted(t,ts, side='right')-1
     it2 = it1 + 1
     #print(it1,it2)
-    if it2>=len(t):
+    if ts!=ts:
+        return np.zeros_like(p_liste)
+    elif it2>=len(t):
         print('t out of velocity field :'+ str(ts))
         return np.zeros_like(p_liste)
     for p in p_liste:
         ip1 = np.searchsorted(x,p, side='right')-1
         if ip1+1>=len(x):
-            print('x out of velocity field')
+            print('x out of velocity field'+str(p))
             v.append(0)
         else:
             ip2 = ip1 + 1
@@ -117,18 +117,21 @@ def bilinear_int(p_liste, ts, VF, x, t, t_step, x_step):
     return np.array(v)
 
 def lagrange_int(p_liste,ts,VF,x,t,t_step,x_step):
+    #print('lagrange')
     v=[]
     it1 = np.searchsorted(t,ts, side='right')-1
     it=[it1+o for o in [-1,0,1,2]]
 
     #print(it1,it2)
-    if it1+1>=len(t) or it1==0:
+    if ts!=ts:
+        return np.zeros_like(p_liste)
+    elif it1+1>=len(t) or it1==0:
         print('t out of velocity field :'+ str(ts))
         return np.zeros_like(p_liste)
     for p in p_liste:
         ip1 = np.searchsorted(x,p, side='right')-1
-        if ip1+1>=len(x) or ip1==0:
-            print('x out of velocity field :'+str(p))
+        if ip1+2>=len(x) or ip1==0:
+            print('x out of velocity field :'+str(p)+' '+str(ip1))
             v.append(0)
         else:
             ip=[ip1+o for o in [-1,0,1,2]]
@@ -168,9 +171,9 @@ class Velocity:
     #interpolation function
     def interpolation_func(self,p, ts):
         if self.inter_method == 'bilinear':
-            return bilinear_int(p, ts, self.VF, self.x, self.t, self.t_step, self.x_step)
+            return bilinear_int(p, ts, self.VF,self.x,  self.t,  self.t_step, self.x_step)
         if self.inter_method == 'lagrange':
-            return lagrange_int(p, ts, self.VF, self.x, self.t, self.t_step, self.x_step)
+            return lagrange_int(p, ts, self.VF,self.x, self.t,   self.t_step, self.x_step)
         
     
     #INITIALISATION OF VELOCITY
@@ -339,8 +342,8 @@ class SetUp:
                  init_mini=0, init_maxi=200*km, init_N=100,
                  um=0.1, uw=0.1, w=w2, k=k2, advected=1,
                 inter_method='bilinear',
-                t_i=-3600/5,t_e=10*d2s,t_step=3600/5,
-                x_i=-1*km,x_e=5*L,x_step=1*km):
+                t_step=h2s,
+                x_step=1*km):
 
         self.model= xs.Model({
             "v_field": Velocity_Field,
@@ -349,12 +352,13 @@ class SetUp:
             "intmethod": intmethod,
             "velocity": Velocity
         })
+        
         self.in_ds=xs.create_setup(model=self.model,
                       clocks={'time': time,
                                     'otime': otime, 'vf':[0]},
                       master_clock='time',
                       input_vars={'init': {'mini': init_mini, 'maxi':init_maxi, 'N':init_N},
-                                    'v_field': {'um': um, 'uw': uw, 'w':w, 'k':k, 'advected':advected, 't_i':t_i, 't_e':t_e, 't_step':t_step, 'x_i':x_i, 'x_e':x_e, 'x_step':x_step},
+                                    'v_field': {'um': um, 'uw': uw, 'w':w, 'k':k, 'advected':advected, 't_i':-2*t_step, 't_e':2*t_step+6*d2s, 't_step':t_step, 'x_i':init_mini-(um+uw)*6*d2s, 'x_e':init_maxi+(um+uw)*6*d2s, 'x_step':x_step},
                                   'velocity':{'inter_method': inter_method}
                                     },
                         output_vars={'position__p' : 'otime', 'velocity__v':'otime', 'v_field__VF':'vf'})
@@ -387,6 +391,8 @@ class SetUp:
         self.out_ds=self.out_ds.drop('v_field__VF').drop('vf')
         self.out_ds.x.attrs={"units":"m", "long_name":"Position"}
         self.out_ds.t.attrs={"units":"s", "long_name":"Time"}
+        
+        self.out_ds['CFL']=(self['um']+self['uw'])*(self.out_ds.time.isel(time=1)-self.out_ds.time.isel(time=0))/self.out_ds.v_field__x_step
 
 
     
@@ -413,6 +419,12 @@ class SetUp:
             return float(self.out_ds.v_field__k)
         if item=='advected':
             return float(self.out_ds.v_field__advected)
+        if item=='dt':
+            return float(self.out_ds.v_field__t_step)
+        if item=='dx':
+            return float(self.out_ds.v_field__x_step)
+        if item=='CFL':
+            return float(self.out_ds.CFL)
         
     def update_intmethod(self,intmethod):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         
@@ -432,6 +444,7 @@ class SetUp:
         
     def update_parameters(self,**parameters):#change one or several parameters, velocity__uw ...
         self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars=parameters)
+        self.in_ds = self.in_ds.xsimlab.update_vars(model=self.model, input_vars={'v_field__t_i':-2*self.in_ds.v_field__t_step, 'v_field__t_e':2*self.in_ds.v_field__t_step+6*d2s, 'v_field__x_i':self.in_ds.init__mini-(self.in_ds.v_field__um+self.in_ds.v_field__uw)*6*d2s, 'v_field__x_e':self.in_ds.init__maxi+(self.in_ds.v_field__um+self.in_ds.v_field__uw)*6*d2s})#if um or/and uw change
         self.out_ds= self.in_ds.xsimlab.run(model=self.model)
         self.add_()
     
