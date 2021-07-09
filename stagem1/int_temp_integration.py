@@ -472,20 +472,20 @@ class SetUp:
         out_ds_b.a.attrs={"units":"m", "long_name":"Particule initial position"}
         return out_ds_b
     
-    def print_positions(self, slice_step=10):#print positions trajectories
-        self.out_ds.position__p.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
+    def print_positions(self, slice_step=10,**kwargs):#print positions trajectories
+        self.out_ds.position__p.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a",**kwargs)
         
-    def print_positions_fac(self,slice_step=10 ):#print positions trajectories
+    def print_positions_fac(self,slice_step=10,**kwargs ):#print positions trajectories
         fg=self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="position__p", marker='.', s=10,col='otime')
         for ax in fg.axes[0]:
-                self.out_ds.isel(otime=0).plot.scatter(x="a", y="position__p", marker='.', c='red', s=1, ax=ax)
+                self.out_ds.isel(otime=0).plot.scatter(x="a", y="position__p", marker='.', c='red', s=1, ax=ax,**kwargs)
     
-    def print_velocities(self, slice_step=10):#print velocities for different otime
+    def print_velocities(self, slice_step=10,**kwargs):#print velocities for different otime
         #self.out_ds.isel(otime=slice(0,None,slice_step)).plot.scatter(x="a", y="velocity__v", marker='.', s=10,col='otime')
-        self.out_ds.velocity__v.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
+        self.out_ds.velocity__v.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a",**kwargs)
     
-    def print_dis(self, slice_step=10):
-        self.out_ds.displacement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a", figsize=(9,9))
+    def print_dis(self, slice_step=10,**kwargs):
+        self.out_ds.displacement.isel(a=slice(0,None,slice_step)).plot(x="otime", hue="a",**kwargs)
     
     def velocity_func(self, *args):
         if self['advected']:
@@ -507,273 +507,10 @@ class SetUp:
         return xr.DataArray(data=VF, dims=["t", "x"], coords=dict(t=(["t"], T/(24*3600.)),x=(["x"], X/1000)),attrs={'units':'m/s', 'long_name':'Velocity'})
         
         
-    def analytical_comparison(self):#verify model respects the analytical solution
-        if self.out_ds.velocity__advected:
-            _va=analytical_velocity_advected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.velocity__um, self.out_ds.velocity__uw, self.out_ds.velocity__w, self.out_ds.velocity__k)
+    def analytical(self):#verify model respects the analytical solution
+        if self.out_ds.v_field__advected:
+            _va=analytical_velocity_advected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
         else:
-            _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.velocity__um, self.out_ds.velocity__uw, self.out_ds.velocity__w, self.out_ds.velocity__k)
+            _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
         
-        return np.all(_va==self.out_ds.velocity__v)  
-
-    
-    
-    
-#TEMPORAL INTEGRATION COMPARISON    
-class Temp_Int_Comp:
-    
-    def __init__(self, x, **arg):#x un objet SetUp
-        
-        x.update_intmethod(Euler)
-        pe=x['p']
-        ae=x['dis']
-        ve=x['v']
-
-        x.update_intmethod(Runge_Kutta2)
-        prk2=x['p']
-        ark2=x['dis']
-        vrk2=x['v']
-        
-        x.update_intmethod(Runge_Kutta2_1)
-        prk2_1=x['p']
-        ark2_1=x['dis']
-        vrk2_1=x['v']
-        
-
-        x.update_intmethod(Runge_Kutta4)
-        prk4=x['p']
-        ark4=x['dis']
-        vrk4=x['v']
-
-        x_ref=SetUp(time= list(np.arange(0,d2s*6, h2s/6)), **arg)#10 min step
-        #x.update_clock(time= list(np.arange(0,d2s*6, h2s/6)))#10 min step
-        x_ref.update_intmethod(Runge_Kutta4)
-        p_ref=x_ref['p']
-        ark4_ref=x_ref['dis']
-        v_ref=x_ref['v']
-        
-        x_crash=SetUp(time=list(np.arange(0,d2s*6, h2s*3)),otime=list(np.arange(0,d2s*6-h2s, h2s*3)),**arg)#10 min step
-        x_crash.update_intmethod(Runge_Kutta4)
-        p_crash=x_crash['p']
-        ark4_crash=x_crash['dis']
-        v_crash=x_crash['v']
-
-        
-        self.ds=xr.concat([ae, ark2, ark2_1, ark4, ark4_crash, ark4_ref], pd.Index(["Euler", "RK2 (1)","RK2 (2)", "RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
-        self.ds.name='displacement'
-        self.ds=self.ds.to_dataset(name='dis')
-
-        self.ds['position']=xr.concat([pe, prk2, prk2_1, prk4, p_crash, p_ref], pd.Index(["Euler", "RK2 (1)","RK2 (2)", "RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
-        self.ds.position.attrs={"units":"m", "long_name":"Position"}
-        
-        self.ds['position_km']=self.ds.position/1000
-        self.ds.position_km.attrs={"units":"km", "long_name":"Position"}
-        self.ds['dis_km']=self.ds.dis/1000
-        self.ds.dis_km.attrs={"units":"km", "long_name":"Displacement"}
-        
-        self.ds['velocities']=xr.concat([ve, vrk2,vrk2_1, vrk4, v_crash, v_ref], pd.Index(["Euler", "RK2 (1)","RK2 (2)","RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
-        
-        aref=self.ds.sel(int_method='RK4 10min (reference)')
-
-        Aref=xr.concat([aref, aref, aref, aref,aref,aref], pd.Index(["Euler", "RK2 (1)","RK2 (2)", "RK4", 'RK4 3h', "RK4 10min (reference)"], name="int_method"))
-
-        self.ds['diff_dis']=(self.ds.dis-Aref.dis)
-        self.ds.diff_dis.attrs={"units":"m", "long_name":"Displacement difference with reference"}
-
-        self.ds['diff_dis_km']=self.ds.dis_km-Aref.dis_km
-        self.ds.diff_dis_km.attrs={"units":"km", "long_name":"Displacement difference with reference"}
-
-        self.ds['diff_velocities']=self.ds.velocities-Aref.velocities
-        self.ds.diff_velocities.attrs={"units":"m/s", "long_name":"Velocity difference with reference"}
-        
-        
-    
-    def print_diff_dis(self, traj=20, **kwargs):
-        LABEL=self.ds.int_method.values
-        self.ds.diff_dis.isel(a=traj,int_method=[0,1,2,3,4]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],**kwargs)
-
-        
-    def print_diff_dis_mean(self, traj=20):
-        LABEL=self.ds.int_method.values
-        #abs(self.ds.dis_km).mean(dim='a').plot(x="otime_day", marker='.', figsize=(9,9), hue="int_method" )
-        abs(self.ds.diff_dis).isel(int_method=[0,1,2,3]).mean(dim='a').plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
- 
-        
-    def print_diff_velocities(self, traj=20):
-        LABEL=self.ds.int_method.values
-        self.ds.diff_velocities.isel(a=traj).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
-    
-   
-    def print_traj(self,traj=20):
-        LABEL=self.ds.int_method.values
-        self.ds.position.isel(a=traj,int_method=[0,1,2,3]).plot(x="otime_day",hue='int_method',ls='', marker='.',markersize=6, label=LABEL[:-1],  figsize=(6,6))
-        
-        
-        
-#DEPENDENCY COMP       
-def dependency_ds(list_Var, Dt, T, OT,mean_b=96, mean_e=144,
-                        list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
-                        dim_name=['um', 'uw','w','k'],
-                        **kwargs):
-    selected_time=list(np.arange(mean_b,mean_e,1))    
-    x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)), **kwargs)#10 min step 
-    x_ref.update_intmethod(Runge_Kutta4)
-
-    def batch_time(x,ad_ref): 
-        list_ad=[]    
-        for j in range (len(Dt)):
-            x.update_clock(time=T[j], otime=OT[j])
-            ds_b=x.out_ds
-            dtamp=abs(ds_b.displacement-ad_ref)**2
-            ad=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-            list_ad.append(ad)
-        return xr.concat(list_ad, pd.Index((Dt), name="delta_t"))
-
-    #Velocity Variables
-    for i in range (len(list_Var)):
-        ds_b=x_ref.batch_parameters(list_Var_Name[i], list_Var[i])
-        dref=ds_b.displacement
-     
-        
-        x=SetUp(**kwargs)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        dtamp=(ds_b.displacement-dref)**2
-        de=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-
-    
-        x.update_intmethod(Runge_Kutta2)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        dtamp=(ds_b.displacement-dref)**2
-        drk2=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-    
-        x.update_intmethod(Runge_Kutta4)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        dtamp=(ds_b.displacement-dref)**2
-        drk4=np.sqrt(dtamp.where(dtamp.where(dtamp.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-    
-
-
-    
-        ds=xr.concat([de, drk2, drk4], pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
-        ds=ds.assign_coords({dim_name[i]:("batch", list_Var[i])})
-        ds=ds.assign_attrs(units='m')
-        ds=ds.rename({'batch':dim_name[i]})
-        if i==0:
-            DS=ds.to_dataset(name='error_dis_'+dim_name[0], promote_attrs=True)
-        else:
-            DS=DS.assign({'error_dis_'+ dim_name[i]: ds})
-    
-    #Delta Time  
-    x=SetUp(**kwargs)
-    x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_intmethod(Runge_Kutta4)
-    ad_ref=x_ref.out_ds.displacement
-    list_dm=[batch_time(x,ad_ref)]
-    x.update_intmethod(Runge_Kutta2)
-    list_dm.append(batch_time(x,ad_ref))
-    x.update_intmethod(Runge_Kutta4)
-    list_dm.append(batch_time(x,ad_ref))
-    ds=xr.concat(list_dm, pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
-    ds=ds.assign_attrs(units='m')
-    DS=DS.assign({'error_dis_delta_time': ds})
-    
-    #ATTRS
-    DS.um.attrs={'units':'m/s', "long_name":"mean velocity"}
-    DS.uw.attrs={'units':'m/s', "long_name":"wave velocity"}
-    DS.w.attrs={'units':'s⁻¹', "long_name":"wave pulsation"}
-    DS.k.attrs={'units':'m⁻¹', "long_name":"wave vector"}
-    DS.delta_t.attrs={'units':'s',"long_name":"simulation time step"}
-    
-    DS.coords['delta_t_min']=DS.delta_t/60
-    DS.delta_t_min.attrs={"units":"min", "long_name":"simulation time step"}
-    DS.coords['Lambda']=2*np.pi/(DS.k)/km
-    DS.Lambda.attrs={"units":"km", "long_name":"wave lenght"}
-    DS.coords['Ts']=2*np.pi/(DS.w)/(3600)
-    DS.Ts.attrs={"units":"hours", "long_name":"wave period"}
-    return DS
-
-
-
-#DEPENDENCY COMP       
-def dependency_ds_max(list_Var, Dt, T, OT,mean_b=96,mean_e=144,
-                        list_Var_Name=['velocity__um', 'velocity__uw','velocity__w', 'velocity__k'], 
-                        dim_name=['um', 'uw','w','k'],
-                        **kwargs):
-                                                                
-    selected_time=list(np.arange(mean_b,mean_e,1))   
-    x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_intmethod(Runge_Kutta4)
-
-    def batch_time(x,ad_ref): 
-        list_ad=[]    
-        for j in range (len(Dt)):
-            x.update_clock(time=T[j], otime=OT[j])
-            ds_b=x.out_ds
-            dtamp=abs(ds_b.displacement-ad_ref)
-            ad=dtamp.max('otime').max('a')#-(ds_b.advancement-ad_ref).sel(otime=selected_time*sti.h2s).min('otime'))
-            list_ad.append(ad)
-        return xr.concat(list_ad, pd.Index((Dt), name="delta_t"))
-
-    #Velocity Variables
-    for i in range (len(list_Var)):
-        ds_b=x_ref.batch_parameters(list_Var_Name[i], list_Var[i])
-        dref=ds_b.displacement
-     
-        
-        x=SetUp(**kwargs)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        #de=((ds_b.displacement-dref).isel(otime=selected_time).max('otime')-(ds_b.displacement-dref).isel(otime=selected_time).min('otime')).mean('a')
-        dtamp=abs(ds_b.displacement-dref)
-        de=dtamp.max('otime').max('a')
-
-    
-        x.update_intmethod(Runge_Kutta2)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        dtamp=abs(ds_b.displacement-dref)
-        drk2=dtamp.max('otime').max('a')
-    
-        x.update_intmethod(Runge_Kutta4)
-        ds_b=x.batch_parameters(list_Var_Name[i], list_Var[i])
-        dtamp=abs(ds_b.displacement-dref)
-        drk4=dtamp.max('otime').max('a')
-    
-
-
-    
-        ds=xr.concat([de, drk2, drk4], pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
-        ds=ds.assign_coords({dim_name[i]:("batch", list_Var[i])})
-        ds=ds.assign_attrs(units='m')
-        ds=ds.rename({'batch':dim_name[i]})
-        if i==0:
-            DS=ds.to_dataset(name='error_dis_'+dim_name[0], promote_attrs=True)
-        else:
-            DS=DS.assign({'error_dis_'+ dim_name[i]: ds})
-    
-    #Delta Time  
-    x=SetUp(**kwargs)
-    x_ref=SetUp(time= list(np.arange(0,d2s*6,h2s/6)),**kwargs)#10 min step 
-    x_ref.update_intmethod(Runge_Kutta4)
-    ad_ref=x_ref.out_ds.displacement
-    list_dm=[batch_time(x,ad_ref)]
-    x.update_intmethod(Runge_Kutta2)
-    list_dm.append(batch_time(x,ad_ref))
-    x.update_intmethod(Runge_Kutta4)
-    list_dm.append(batch_time(x,ad_ref))
-    ds=xr.concat(list_dm, pd.Index(["Euler", "RK2", "RK4"], name="int_method"))
-    ds=ds.assign_attrs(units='m')
-    DS=DS.assign({'error_dis_delta_time': ds})
-    
-    #ATTRS
-    DS.um.attrs={'units':'m/s', "long_name":"mean velocity"}
-    DS.uw.attrs={'units':'m/s', "long_name":"wave velocity"}
-    DS.w.attrs={'units':'s⁻¹', "long_name":"wave pulsation"}
-    DS.k.attrs={'units':'m⁻¹', "long_name":"wave vector"}
-    DS.delta_t.attrs={'units':'min',"long_name":"simulation time step"}
-    
-    DS.coords['delta_t_min']=DS.delta_t/60
-    DS.delta_t_min.attrs={"units":"min", "long_name":"simulation time step"}
-    DS.coords['Lambda']=2*np.pi/(DS.k)/km
-    DS.Lambda.attrs={"units":"km", "long_name":"wave lenght"}
-    DS.coords['Ts']=2*np.pi/(DS.w)/(3600)
-    DS.Ts.attrs={"units":"hours", "long_name":"wave period"}
-    return DS
-
+        return _va 
