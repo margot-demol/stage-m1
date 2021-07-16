@@ -76,14 +76,14 @@ class Velocity_Field:
     
     @xs.runtime(args=["step_end"])
     def initialize(self,te):
-        self.t=np.arange(self.t_i,self.t_e+self.t_step*2, self.t_step)#never reach border even with Lagrangian interpolation
+        self.t=np.arange(self.t_i, self.t_e+self.t_step*2, self.t_step)#never reach border even with Lagrangian interpolation
         self.x=np.arange(self.x_i,self.x_e+self.x_step*2,self.x_step)
         len_t=len(self.t)
         len_x=len(self.x)
         self.VF=np.zeros((len_t, len_x))
         for i in range(len_t):
             for j in range (len_x):
-                self.VF[i,j]=analytical_velocity_advected(self.t[i], self.x[j], self.um, self.uw, self.w, self.k)
+                self.VF[i,j]=self.velocity_func(self.t[i], self.x[j], self.um, self.uw, self.w, self.k)
     
                 
 #INTERPOLATION FUNCTIONS
@@ -392,6 +392,17 @@ class SetUp:
         self.out_ds.x.attrs={"units":"m", "long_name":"Position"}
         self.out_ds.t.attrs={"units":"s", "long_name":"Time"}
         
+        #replace nan by 0 in t
+        tm=self.out_ds.t.values
+        for i in range(len(tm)):
+            a=tm[i]
+            if a!=a:
+                tm[i]=0
+        
+        self.out_ds.coords['t_day']=self.out_ds.t/(24*3600)
+        self.out_ds.coords['x_km']=self.out_ds.t/km
+ 
+        
         self.out_ds['CFL']=(self['um']+self['uw'])*(self.out_ds.time.isel(time=1)-self.out_ds.time.isel(time=0))/self.out_ds.v_field__x_step
 
 
@@ -425,6 +436,8 @@ class SetUp:
             return float(self.out_ds.v_field__x_step)
         if item=='CFL':
             return float(self.out_ds.CFL)
+        if item=="VF":
+            return self.out_ds.velocity_field
         
     def update_intmethod(self,intmethod):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         
@@ -514,3 +527,60 @@ class SetUp:
             _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
         
         return _va 
+
+    
+    
+class Norm:
+    def __init__(self,DT,ODT,*args):
+    
+        nx_liste_b=[]
+        nv_liste_b=[]
+        cfl_liste=[]
+        T=[list(np.arange(0,sti.d2s*6, t))for t in DT]
+        OT=[list(np.arange(0,sti.d2s*6-t, t))for t in ODT]
+        x=iti.SetUp(intmethod=iti.Runge_Kutta4, **args)
+        y=sti.SetUp(intmethod=sti.Runge_Kutta4, **args)
+    
+        for i in range(len(DT)):
+            x.update_clock(time=T[i], otime=OT[i])
+            dx=(x['p']-y['p'])**2
+            nx=np.sqrt(dx.where(dx.where(dx.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+            nx_liste_b.append(nx)
+            a=x.analytical()
+            dv=(x['v']-a)**2
+            nv=np.sqrt(dv.mean('otime').mean('a'))
+            nv_liste_b.append(nv)
+            cfl_liste.append(x['CFL'])
+        
+        nx_liste_l=[]
+        nv_liste_l=[]
+        x.update_parameters(velocity__inter_method='lagrange')
+        for i in range(len(DT)):
+            x.update_clock(time=T[i], otime=OT[i])
+            dx=(x['p']-y['p'])**2
+            nx=np.sqrt(dx.where(dx.where(dx.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
+            nx_liste_l.append(nx)
+            a=x.analytical()
+            dv=(x['v']-a)**2
+            nv=np.sqrt(dv.mean('otime').mean('a'))
+            nv_liste_l.append(nv)
+
+            #DATASET
+        self.ds = xr.Dataset({
+            'norm_x': xr.DataArray(
+                data   = np.array([nx_liste_b,nx_liste_l]).T,
+                dims   = ['delta_t', 'inter_method'],
+                coords = {'delta_t': DT, 'inter_method':['Bilinéaire', 'Lagrange']},
+                attrs  = {'long_name': r'$||\epsilon_d||_d$','units': 'm'}),
+            'norm_v':xr.DataArray(
+                data   = np.array([nv_liste_b,nv_liste_l]).T,
+                dims   = ['delta_t', 'inter_method'],
+                coords = {'delta_t': DT, 'inter_method':['Bilinéaire', 'Lagrange']},
+                attrs  = {'long_name': r'$||\epsilon_v||$','units': r'$m.s^{-1}$'}),
+        })
+        self.ds.delta_t.attrs={"units":"s", "long_name":r'$\delta t$'}
+        self.ds.coords['CFL']=cfl_liste
+        self.ds.CFL.attrs={"units":"1", "long_name":"Courant number"}
+        self.ds.coords['delta_t_h']=ds.delta_t/3600
+        self.ds.delta_t_h.attrs={"units":"h", "long_name":r"$\delta t$"}
+        
