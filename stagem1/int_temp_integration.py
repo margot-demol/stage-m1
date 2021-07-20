@@ -76,8 +76,8 @@ class Velocity_Field:
     
     @xs.runtime(args=["step_end"])
     def initialize(self,te):
-        self.t=np.arange(self.t_i, self.t_e+self.t_step*2, self.t_step)#never reach border even with Lagrangian interpolation
-        self.x=np.arange(self.x_i,self.x_e+self.x_step*2,self.x_step)
+        self.t=np.arange(self.t_i, self.t_e+self.t_step*2., self.t_step)#never reach border even with Lagrangian interpolation
+        self.x=np.arange(self.x_i,self.x_e+self.x_step*2.,self.x_step)
         len_t=len(self.t)
         len_x=len(self.x)
         self.VF=np.zeros((len_t, len_x))
@@ -392,15 +392,10 @@ class SetUp:
         self.out_ds.x.attrs={"units":"m", "long_name":"Position"}
         self.out_ds.t.attrs={"units":"s", "long_name":"Time"}
         
-        #replace nan by 0 in t
-        tm=self.out_ds.t.values
-        for i in range(len(tm)):
-            a=tm[i]
-            if a!=a:
-                tm[i]=0
+
         
         self.out_ds.coords['t_day']=self.out_ds.t/(24*3600)
-        self.out_ds.coords['x_km']=self.out_ds.t/km
+        self.out_ds.coords['x_km']=self.out_ds.x/km
  
         
         self.out_ds['CFL']=(self['um']+self['uw'])*(self.out_ds.time.isel(time=1)-self.out_ds.time.isel(time=0))/self.out_ds.v_field__x_step
@@ -530,57 +525,82 @@ class SetUp:
 
     
     
-class Norm:
-    def __init__(self,DT,ODT,*args):
+def run_DT(DT,Tmax=24,a=5, xlim=None, **args):
+    n=len(DT)
+    fig, axes = plt.subplots(5, n, figsize=(12, 12), sharex='all')
+    x=SetUp(**args)
     
-        nx_liste_b=[]
-        nv_liste_b=[]
-        cfl_liste=[]
-        T=[list(np.arange(0,sti.d2s*6, t))for t in DT]
-        OT=[list(np.arange(0,sti.d2s*6-t, t))for t in ODT]
-        x=iti.SetUp(intmethod=iti.Runge_Kutta4, **args)
-        y=sti.SetUp(intmethod=sti.Runge_Kutta4, **args)
-    
-        for i in range(len(DT)):
-            x.update_clock(time=T[i], otime=OT[i])
-            dx=(x['p']-y['p'])**2
-            nx=np.sqrt(dx.where(dx.where(dx.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-            nx_liste_b.append(nx)
-            a=x.analytical()
-            dv=(x['v']-a)**2
-            nv=np.sqrt(dv.mean('otime').mean('a'))
-            nv_liste_b.append(nv)
-            cfl_liste.append(x['CFL'])
-        
-        nx_liste_l=[]
-        nv_liste_l=[]
-        x.update_parameters(velocity__inter_method='lagrange')
-        for i in range(len(DT)):
-            x.update_clock(time=T[i], otime=OT[i])
-            dx=(x['p']-y['p'])**2
-            nx=np.sqrt(dx.where(dx.where(dx.otime<6*24*3600).otime>4*24*3600).mean('otime').mean('a'))
-            nx_liste_l.append(nx)
-            a=x.analytical()
-            dv=(x['v']-a)**2
-            nv=np.sqrt(dv.mean('otime').mean('a'))
-            nv_liste_l.append(nv)
+    for i in range(n):
+        time = np.arange(0, Tmax*h2s, h2s*DT[i])
+        otime = time[:-1]
 
-            #DATASET
-        self.ds = xr.Dataset({
-            'norm_x': xr.DataArray(
-                data   = np.array([nx_liste_b,nx_liste_l]).T,
-                dims   = ['delta_t', 'inter_method'],
-                coords = {'delta_t': DT, 'inter_method':['Bilinéaire', 'Lagrange']},
-                attrs  = {'long_name': r'$||\epsilon_d||_d$','units': 'm'}),
-            'norm_v':xr.DataArray(
-                data   = np.array([nv_liste_b,nv_liste_l]).T,
-                dims   = ['delta_t', 'inter_method'],
-                coords = {'delta_t': DT, 'inter_method':['Bilinéaire', 'Lagrange']},
-                attrs  = {'long_name': r'$||\epsilon_v||$','units': r'$m.s^{-1}$'}),
-        })
-        self.ds.delta_t.attrs={"units":"s", "long_name":r'$\delta t$'}
-        self.ds.coords['CFL']=cfl_liste
-        self.ds.CFL.attrs={"units":"1", "long_name":"Courant number"}
-        self.ds.coords['delta_t_h']=ds.delta_t/3600
-        self.ds.delta_t_h.attrs={"units":"h", "long_name":r"$\delta t$"}
+        x.update_clock(time=time, otime=otime)
+
+
+        _x = x.out_ds.isel(a=a)
+        _x_ana = x.analytical().isel(a=a)
+
+        ax=axes[0][i]
+        _x_ana.plot(ax=ax,x='otime_day', label='Vitesse exacte')
+        _x["velocity__v"].plot(ax=ax,x='otime_day', marker='+', ls=':',label='Vitesse interpolée')
+        ax.grid()
+        ax.set_xlim(xlim)
+        ax.set_title('')
+        ax.annotate(r"$\delta t = {}$".format(DT[i]) +"\n CFL = {}".format(x.out_ds.CFL.values), xy=(0.5, 1.05), xytext=(0, 4),xycoords='axes fraction',fontsize=16, textcoords='offset points',size='large', ha='center', va='baseline')
+
+        ax = axes[1][i]
+        (_x_ana - _x["velocity__v"]).plot(ax=ax,x='otime_day', color='yellowgreen')
+        ax.grid()
+        ax.set_xlim(xlim)
+        ax.set_title('')
+    
+    
+        ax = axes[2][i]
+        x_dmin=(_x["position__p"]%x["dx"])
+        x_dmax=x['dx']-x_dmin
+        d_x=x_dmin.where(x_dmin<x_dmax, x_dmax)
+        d_x.plot(ax=ax,x='otime_day', color='salmon')
+        ax.grid()
+        ax.set_xlim(xlim)
+        ax.set_title('')
         
+        ax = axes[3][i]
+        t_dmin=x["otime"]%x["dt"]
+        t_dmax=x["dt"]-x["otime"]%x["dt"]
+        d_t=((t_dmin.where(t_dmin<t_dmax, t_dmax))/3600)
+        d_t.plot(ax=ax,x='otime_day', color='violet')
+        ax.grid()
+        ax.set_xlim(xlim)
+        ax.set_title('')
+        
+        ax = axes[4][i]
+        ((_x["velocity__v"]-x['um'])*d_t).plot(x='otime_day', ax=ax, color='red')
+        #((_x_ana-x['um'])*d_t).plot(x='otime_day', ax=ax)
+        ax.grid()
+        
+    #ylabels
+    axes[0][0].set_ylabel('Vitesses [m/s]', fontsize=12)
+    axes[1][0].set_ylabel('Différence vitesse interpolée \n et vitesse analytique [m/s]', fontsize=12)
+    axes[2][0].set_ylabel('Distance spatiale au \n point de la grille \n le plus proche [m]', fontsize=12)
+    axes[3][0].set_ylabel('Distance temporelle au \n point de la grille \n le plus proche [h]', fontsize=12)
+    axes[4][0].set_ylabel('Vitesse multipliée par \n la distance temporelle \n au point de la grille [m]', fontsize=12)
+    for i in range(n-1):
+        axes[0][i+1].set_ylabel('')
+        axes[1][i+1].set_ylabel('')
+        axes[2][i+1].set_ylabel('')
+        axes[3][i+1].set_ylabel('')
+        axes[4][i+1].set_ylabel('')
+    
+    ##Only one legend for all    
+    lines, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(lines, labels,bbox_to_anchor=(1,0), loc="lower right", bbox_transform=fig.transFigure, ncol=6, fontsize=15)
+
+    inter_method=x.out_ds.velocity__inter_method.values
+    if inter_method=='bilinear':        
+        fig.suptitle('Interpolation bilinéaire\n a='+str(a), fontsize=20)
+    else:      
+        fig.suptitle('Interpolation de Lagrange \n a='+str(a), fontsize=20)
+    
+    plt.tight_layout(rect=[0,0.03,1,1])#left, bottom, right, top (default is 0,0,1,1)
+    plt.draw()
+    
