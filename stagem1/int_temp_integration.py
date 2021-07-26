@@ -42,6 +42,15 @@ def analytical_velocity_advected(t, x, um, uw, w, k):
 def analytical_velocity_unadvected(t, x, um, uw, w, k):
     return (um + uw*np.cos(w*t-k*x))
 
+###ACCELERATION ON TRAJECTORIES
+def acc_advected(t, x, um, uw, w, k):
+    v=analytical_velocity_advected(t, x, um, uw, w, k)
+    return -uw*(w+k*um-k*v)*np.sin(w*t-k*(x-um*t))
+
+def acc_unadvected(t, x, um, uw, w, k):
+    v=analytical_velocity_unadvected(t, x, um, uw, w, k)
+    return -uw*(w-k*v)*np.sin(w*t-k*x)
+
 
 @xs.process
 class Velocity_Field:
@@ -335,7 +344,7 @@ class Runge_Kutta4:
 #SET UP
 class SetUp:
     def __init__(self,
-                 intmethod=Euler,
+                 intmethod=Runge_Kutta4,
                  init_p=InitPRegular,
                  time= list(np.arange(0,d2s*6, h2s)),
                  otime=list(np.arange(0, d2s*6-h2s, h2s)),
@@ -392,8 +401,8 @@ class SetUp:
         self.out_ds.x.attrs={"units":"m", "long_name":"Position"}
         self.out_ds.t.attrs={"units":"s", "long_name":"Time"}
         
-
-        
+        self.out_ds['diff_acc']=self['v'].differentiate('otime',2)
+  
         self.out_ds.coords['t_day']=self.out_ds.t/(24*3600)
         self.out_ds.coords['x_km']=self.out_ds.x/km
  
@@ -433,6 +442,8 @@ class SetUp:
             return float(self.out_ds.CFL)
         if item=="VF":
             return self.out_ds.velocity_field
+        if item=="acc":
+            return self.out_ds.diff_acc
         
     def update_intmethod(self,intmethod):#update processes of the model ex: change Euler->Runge Kutta: **process = intmethod=Runge_Kutta2
         
@@ -522,12 +533,19 @@ class SetUp:
             _va=analytical_velocity_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
         
         return _va 
-
+    
+    def analytical_acc(self):#verify model respects the analytical solution
+        if self.out_ds.v_field__advected:
+            _acc=acc_advected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
+        else:
+            _acc=acc_unadvected(self.out_ds.otime, self.out_ds.position__p,self.out_ds.v_field__um, self.out_ds.v_field__uw, self.out_ds.v_field__w, self.out_ds.v_field__k)
+        
+        return _acc
     
     
 def run_DT(DT,Tmax=24,a=5, xlim=None, **args):
     n=len(DT)
-    fig, axes = plt.subplots(5, n, figsize=(12, 12), sharex='all')
+    fig, axes = plt.subplots(5, n, figsize=(12, 12), sharex='all', sharey='row')
     x=SetUp(**args)
     
     for i in range(n):
@@ -539,17 +557,19 @@ def run_DT(DT,Tmax=24,a=5, xlim=None, **args):
 
         _x = x.out_ds.isel(a=a)
         _x_ana = x.analytical().isel(a=a)
-
-        ax=axes[0][i]
+        
+        axes[0][i].annotate(r"$\delta t = {}$".format(DT[i]), xy=(0.5, 1.05), xytext=(0, 4),xycoords='axes fraction',fontsize=16, textcoords='offset points',size='large', ha='center', va='baseline')
+        
+        ax=axes[1][i]
         _x_ana.plot(ax=ax,x='otime_day', label='Vitesse exacte')
         _x["velocity__v"].plot(ax=ax,x='otime_day', marker='+', ls=':',label='Vitesse interpolée')
         ax.grid()
         ax.set_xlim(xlim)
         ax.set_title('')
-        ax.annotate(r"$\delta t = {}$".format(DT[i]) +"\n CFL = {}".format(x.out_ds.CFL.values), xy=(0.5, 1.05), xytext=(0, 4),xycoords='axes fraction',fontsize=16, textcoords='offset points',size='large', ha='center', va='baseline')
 
-        ax = axes[1][i]
-        (_x_ana - _x["velocity__v"]).plot(ax=ax,x='otime_day', color='yellowgreen')
+
+        ax = axes[0][i]
+        (_x_ana - _x["velocity__v"]).plot(ax=ax,x='otime_day', color='yellowgreen',ls=':', marker='.')
         ax.grid()
         ax.set_xlim(xlim)
         ax.set_title('')
@@ -558,32 +578,36 @@ def run_DT(DT,Tmax=24,a=5, xlim=None, **args):
         ax = axes[2][i]
         x_dmin=(_x["position__p"]%x["dx"])
         x_dmax=x['dx']-x_dmin
-        d_x=x_dmin.where(x_dmin<x_dmax, x_dmax)
-        d_x.plot(ax=ax,x='otime_day', color='salmon')
+        d_x=x_dmin.where(x_dmin<x_dmax, x_dmax)/km
+        d_x.plot(ax=ax,x='otime_day', color='salmon', ls=':', marker='.')
         ax.grid()
         ax.set_xlim(xlim)
         ax.set_title('')
+        ax.set_ylim(-0.01,0.51)
         
         ax = axes[3][i]
         t_dmin=x["otime"]%x["dt"]
         t_dmax=x["dt"]-x["otime"]%x["dt"]
-        d_t=((t_dmin.where(t_dmin<t_dmax, t_dmax))/3600)
-        d_t.plot(ax=ax,x='otime_day', color='violet')
+        d_t=((t_dmin.where(t_dmin<t_dmax, t_dmax))/h2s)
+        d_t.plot(ax=ax,x='otime_day', color='violet', ls='', marker='.')
         ax.grid()
         ax.set_xlim(xlim)
         ax.set_title('')
+        ax.set_ylim(-0.01,0.51)
         
         ax = axes[4][i]
-        ((_x["velocity__v"]-x['um'])*d_t).plot(x='otime_day', ax=ax, color='red')
+        ((_x["velocity__v"]-x['um'])*d_t).plot(x='otime_day', ax=ax, color='red',ls=':', marker='.')
         #((_x_ana-x['um'])*d_t).plot(x='otime_day', ax=ax)
         ax.grid()
+        ax.set_title('')
+        ax.set_xlim(xlim)
         
     #ylabels
-    axes[0][0].set_ylabel('Vitesses [m/s]', fontsize=12)
-    axes[1][0].set_ylabel('Différence vitesse interpolée \n et vitesse analytique [m/s]', fontsize=12)
-    axes[2][0].set_ylabel('Distance spatiale au \n point de la grille \n le plus proche [m]', fontsize=12)
-    axes[3][0].set_ylabel('Distance temporelle au \n point de la grille \n le plus proche [h]', fontsize=12)
-    axes[4][0].set_ylabel('Vitesse multipliée par \n la distance temporelle \n au point de la grille [m]', fontsize=12)
+    axes[1][0].set_ylabel('Vitesses [m/s]', fontsize=15)
+    axes[0][0].set_ylabel('$\epsilon_{v}$ [m/s]', fontsize=15)
+    axes[2][0].set_ylabel(r'$\alpha_x$', fontsize=15)
+    axes[3][0].set_ylabel(r'$\alpha_t$', fontsize=15)
+    axes[4][0].set_ylabel('Vitesse multipliée \n'+r'par $\alpha_t$ [m/s]', fontsize=15)
     for i in range(n-1):
         axes[0][i+1].set_ylabel('')
         axes[1][i+1].set_ylabel('')
@@ -597,9 +621,9 @@ def run_DT(DT,Tmax=24,a=5, xlim=None, **args):
 
     inter_method=x.out_ds.velocity__inter_method.values
     if inter_method=='bilinear':        
-        fig.suptitle('Interpolation bilinéaire\n a='+str(a), fontsize=20)
+        fig.suptitle('Interpolation bilinéaire', fontsize=20)
     else:      
-        fig.suptitle('Interpolation de Lagrange \n a='+str(a), fontsize=20)
+        fig.suptitle('Interpolation de Lagrange', fontsize=20)
     
     plt.tight_layout(rect=[0,0.03,1,1])#left, bottom, right, top (default is 0,0,1,1)
     plt.draw()
