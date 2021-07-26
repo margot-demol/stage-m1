@@ -11,7 +11,7 @@ To import: `import stagem1.temporal_integration as sti`
 - `km` a kilometer in meter
 - `dt` simulation time step in seconds
 - `L`  wave length in meters
-- `k2` wave vector
+- `k2` wave vector corresponding to an 100 km wavelength
 
 ## SetUp class
 ### Members
